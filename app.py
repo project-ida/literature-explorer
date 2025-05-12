@@ -417,7 +417,17 @@ with col2:
                     unsafe_allow_html=True
                 )
             with middle:
-                page = st.number_input("", min_value=1, max_value=total_pages, value=1, step=1, key="page_number")            
+
+                page = st.number_input(
+                    "Page Number",  # or any dummy label
+                    min_value=1,
+                    max_value=total_pages,
+                    value=1,
+                    step=1,
+                    key="page_number",
+                    label_visibility="collapsed"
+                )
+
             start = (page - 1) * page_size
             end = start + page_size
             with top_right:
