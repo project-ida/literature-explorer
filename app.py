@@ -247,7 +247,21 @@ with col1:
         group_name, fields = group_items[0]  # This should be "Document Type"
         with st.expander(group_name, expanded=True):
             options = ["All Document Types"] + [FILTER_LABELS.get(f, f) for f in fields]
-            selected_label = st.radio("", options, key="doc_type_radio", index=0)
+
+            selected_label = st.radio(
+                "Document Type",  # Or a dummy label like "Select type"
+                options,
+                key="doc_type_radio",
+                index=0,
+                label_visibility="collapsed"
+            )
+
+            # Clear selected file if document type filter changes
+            if "prev_doc_type_label" not in st.session_state:
+                st.session_state.prev_doc_type_label = selected_label
+            elif selected_label != st.session_state.prev_doc_type_label:
+                st.session_state.selected_filename = None
+                st.session_state.prev_doc_type_label = selected_label            
 
             selected_field = None
             if selected_label != "All Document Types":
@@ -261,12 +275,15 @@ with col1:
         if show_experiment_filters:
             for i, (group_name, fields) in enumerate(group_items[1:]):  # Skip Document Type
                 with st.expander(group_name, expanded=True):
+
                     logic = st.radio(
-                        "", ["any of:", "all of:"],
+                        "Filter logic",  # Can be anything, hidden anyway
+                        ["any of:", "all of:"],
                         index=0,
                         key=f"{group_name}_logic",
                         horizontal=True,
-                        format_func=lambda x: f"**{x}**"
+                        format_func=lambda x: f"**{x}**",
+                        label_visibility="collapsed"
                     )
 
                     # --- Select All / None Buttons ---
@@ -282,10 +299,16 @@ with col1:
                     selected_fields = []
                     for field in fields:
                         label = FILTER_LABELS.get(field, field.replace("_", " ").title())
-                        default = True if field not in st.session_state else st.session_state[field]
-                        checked = st.checkbox(label, key=field, value=default)
+                        
+                        # Set default to True only once (on first appearance)
+                        if field not in st.session_state:
+                            st.session_state[field] = True
+
+                        # Let Streamlit manage state; do NOT set value=...
+                        checked = st.checkbox(label, key=field)
                         if checked:
                             selected_fields.append(field)
+
 
                     # --- Add to filters only if relevant ---
                     #if selected_fields or logic == "all of:":
@@ -492,8 +515,14 @@ with col3:
                     "Anomalies Claimed": "anomaliesclaimed_justifications"
                 }
 
+                is_experimental = bool(just_check.iloc[0].get("documenttype_experimental") == 1)
+
                 for section_title, prefix in sections.items():
+                    if section_title != "Document Type" and not is_experimental:
+                        continue  # Show only Document Type unless paper is experimental
+
                     st.markdown(f"##### {section_title}")
+
 
                     # Add shape_summary above the checklist entries in Forms section
                     if section_title == "Forms":
@@ -513,12 +542,13 @@ with col3:
                         justification = just_row.iloc[0][just_col]
                         if isinstance(justification, str) and justification.strip():
                             # Insert line breaks where a new justification starts
-                            formatted = justification.replace('" "', '"<br>"')
+                            formatted = re.sub(r'\s*-\s*', ' ', justification).replace('" "', '"<br>"')
+
                             st.markdown(f"<span style='color:gray'>{formatted}</span>", unsafe_allow_html=True)
 
                 # Add controls_summary if available
                 controls = just_row.iloc[0].get("controls_summary")
-                if isinstance(controls, str) and controls.strip():
+                if is_experimental and isinstance(controls, str) and controls.strip():
                     st.markdown("##### Control Experiments")
                     st.markdown(f"<span style='color:gray'>{controls.strip()}</span>", unsafe_allow_html=True)
 
