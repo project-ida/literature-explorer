@@ -2,6 +2,8 @@
 
 The LENR Literature Explorer is a Streamlit-based web application for interactively exploring a curated database of experimental and theoretical papers related to Low-Energy Nuclear Reactions (LENR).
 
+You can access the app here: https://lenr.mit.edu/literature
+
 ## 🔍 Key Features
 
 **Faceted Search Interface**  
