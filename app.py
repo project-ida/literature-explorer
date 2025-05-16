@@ -99,12 +99,40 @@ FILTER_LABELS = {
     "anomaliesclaimed_other": "Other Anomaly"
 }
 
+GROUP_SLUGS = {
+    "document_type": "Document Type",
+    "sample_materials": "Sample Materials",
+    "sample_shapes_(initial)": "Sample Shapes (initial)",
+    "hydrogen_isotopes": "Hydrogen Isotopes",
+    "hydrogen_loading": "Hydrogen Loading",
+    "stimulation": "Stimulation",
+    "diagnostics_used": "Diagnostics Used",
+    "anomalies_claimed": "Anomalies Claimed"
+}
+
 
 import matplotlib.pyplot as plt
 import re
 import streamlit as st
 import pandas as pd
 import streamlit.components.v1 as components
+
+from urllib.parse import urlencode
+
+def slugify_group_name(name):
+    return name.replace(" ", "_").lower()
+
+def parse_query_params():
+    parsed = {}
+    for key, value in st.query_params.items():
+        for slug, group in GROUP_SLUGS.items():
+            if key == f"{slug}_logic":
+                parsed.setdefault(group, {})["logic"] = value
+            elif key == f"{slug}_fields":
+                parsed.setdefault(group, {})["fields"] = value.split(",") if value else []
+    return parsed
+
+
 
 reset_triggered = st.session_state.pop("reset_triggered", False)
 
@@ -188,10 +216,10 @@ metadata_df = metadata_df[metadata_df["Filename"].notna() & (metadata_df["Filena
 def get_checkbox_groups(headers):
     groups = {
         "Document Type": [],
-        "Sample materials": [],
-        "Sample shapes (initial)": [],
-        "Hydrogen isotopes": [],
-        "Hydrogen loading": [],
+        "Sample Materials": [],
+        "Sample Shapes (initial)": [],
+        "Hydrogen Isotopes": [],
+        "Hydrogen Loading": [],
         "Stimulation": [],
         "Diagnostics Used": [],
         "Anomalies Claimed": []
@@ -200,13 +228,13 @@ def get_checkbox_groups(headers):
         if h.startswith("documenttype_"):
             groups["Document Type"].append(h)
         elif h.startswith("material_"):
-            groups["Sample materials"].append(h)
+            groups["Sample Materials"].append(h)
         elif h.startswith("shape_"):
-            groups["Sample shapes (initial)"].append(h)
+            groups["Sample Shapes (initial)"].append(h)
         elif h.startswith("fuel_"):
-            groups["Hydrogen isotopes"].append(h)
+            groups["Hydrogen Isotopes"].append(h)
         elif h.startswith("loading_"):
-            groups["Hydrogen loading"].append(h)
+            groups["Hydrogen Loading"].append(h)
         elif h.startswith("stimulation_"):
             groups["Stimulation"].append(h)
         elif h.startswith("diagnosticsused_"):
@@ -231,15 +259,38 @@ st.title("LENR Literature Explorer")
 col1, col2, col3 = st.columns([2, 3, 4], gap="medium")
 
 # --- LEFT COLUMN (COL1) FILTERS WITH ALL/ANY LOGIC ---
-# --- LEFT COLUMN (COL1) FILTERS WITH ALL/ANY LOGIC ---
-# --- LEFT COLUMN (COL1) FILTERS WITH ALL/ANY LOGIC ---
 with col1:
     with st.container(border=True, height=800):
         st.subheader("Filter Papers:")
-        st.markdown("Refresh page to reset filters")
+
+
+        if st.button("🔄 Reset All Filters"):
+            # Clear query params
+            st.query_params.clear()
+
+            # Clear document type radio
+            st.session_state.pop("doc_type_radio", None)
+
+            # Clear logic radios and checkboxes
+            for group_name in GROUP_SLUGS.values():
+                st.session_state.pop(f"{group_name}_logic", None)
+
+            for key in FILTER_LABELS:
+                st.session_state.pop(key, None)
+
+            # Clear filename selection
+            st.session_state.pop("selected_filename", None)
+
+            # Rerun the app to refresh the interface
+            st.rerun()
+
 
         checklist_headers = checklist_df.columns.tolist()[1:]
         checkbox_groups = get_checkbox_groups(checklist_headers)
+        
+        prefilled_filters = parse_query_params()
+
+
         selected_filters = {}  # dict with logic and field list per group
         group_items = list(checkbox_groups.items())
 
@@ -248,76 +299,115 @@ with col1:
         with st.expander(group_name, expanded=True):
             options = ["All Document Types"] + [FILTER_LABELS.get(f, f) for f in fields]
 
-            selected_label = st.radio(
-                "Document Type",  # Or a dummy label like "Select type"
+            # Pre-select from query param if present
+            pre_selected_field = None
+            doc_prefill = prefilled_filters.get(group_name, {})
+            doc_fields = doc_prefill.get("fields", [])
+            if doc_fields:
+                pre_selected_field = FILTER_LABELS.get(doc_fields[0])
+
+            pre_selected_field = None
+            doc_prefill = prefilled_filters.get(group_name, {})
+            doc_fields = doc_prefill.get("fields", [])
+            if doc_fields:
+                pre_selected_field = FILTER_LABELS.get(doc_fields[0])
+
+            # Set the default only on first render
+            if "doc_type_radio" not in st.session_state:
+                st.session_state["doc_type_radio"] = pre_selected_field or "All Document Types"
+
+            # Render radio
+            st.radio(
+                "Document Type",
                 options,
                 key="doc_type_radio",
-                index=0,
                 label_visibility="collapsed"
             )
 
-            # Clear selected file if document type filter changes
-            if "prev_doc_type_label" not in st.session_state:
-                st.session_state.prev_doc_type_label = selected_label
-            elif selected_label != st.session_state.prev_doc_type_label:
+            # Clear selected_filename if doc type changes
+            if st.session_state.get("selected_filename") and pre_selected_field and st.session_state.doc_type_radio != pre_selected_field:
                 st.session_state.selected_filename = None
-                st.session_state.prev_doc_type_label = selected_label            
 
+
+            # Apply filter
             selected_field = None
-            if selected_label != "All Document Types":
-                selected_field = next((f for f in fields if FILTER_LABELS.get(f) == selected_label), None)
-                #if selected_field:
+            if st.session_state.doc_type_radio != "All Document Types":
+                selected_field = next((f for f in fields if FILTER_LABELS.get(f) == st.session_state.doc_type_radio), None)
                 selected_filters[group_name] = {"logic": "Only one", "fields": [selected_field]}
+
 
             show_experiment_filters = selected_field == "documenttype_experimental"
 
+
         # --- Step 2: Show other filters only if "Experimental Paper" is selected ---
         if show_experiment_filters:
-            for i, (group_name, fields) in enumerate(group_items[1:]):  # Skip Document Type
+            for i, (group_name, fields) in enumerate(group_items[1:]):
                 with st.expander(group_name, expanded=True):
+                    prefill = prefilled_filters.get(group_name, {})
+                    pre_logic = prefill.get("logic", "any of:")
+                    pre_fields = set(prefill.get("fields", []))
+
+                    # Initialize session state for logic radio if not already set
+                    logic_key = f"{group_name}_logic"
+                    if logic_key not in st.session_state:
+                        st.session_state[logic_key] = pre_logic if pre_logic in ["any of:", "all of:"] else "any of:"
 
                     logic = st.radio(
-                        "Filter logic",  # Can be anything, hidden anyway
+                        "Filter logic",
                         ["any of:", "all of:"],
-                        index=0,
-                        key=f"{group_name}_logic",
+                        index=0 if st.session_state[logic_key] == "any of:" else 1,
+                        key=logic_key,
                         horizontal=True,
                         format_func=lambda x: f"**{x}**",
                         label_visibility="collapsed"
                     )
 
-                    # --- Select All / None Buttons ---
+
+                    # Select All / None buttons
                     if st.button("Select All", key=f"{group_name}_select_all"):
                         for field in fields:
                             st.session_state[field] = True
-
                     if st.button("Select None", key=f"{group_name}_select_none"):
                         for field in fields:
                             st.session_state[field] = False
 
-                    # --- Checkboxes ---
                     selected_fields = []
                     for field in fields:
-                        label = FILTER_LABELS.get(field, field.replace("_", " ").title())
-                        
-                        # Set default to True only once (on first appearance)
+                        label = FILTER_LABELS.get(field, field)
                         if field not in st.session_state:
-                            st.session_state[field] = True
-
-                        # Let Streamlit manage state; do NOT set value=...
+                            if pre_fields:  # URL explicitly defines which are selected
+                                st.session_state[field] = field in pre_fields
+                            else:
+                                st.session_state[field] = True  # default to checked
                         checked = st.checkbox(label, key=field)
                         if checked:
                             selected_fields.append(field)
 
-
-                    # --- Add to filters only if relevant ---
-                    #if selected_fields or logic == "all of:":
-                    selected_filters[group_name] = {"logic": logic, "fields": selected_fields}
-
+                    selected_filters[group_name] = {"logic": st.session_state[logic_key], "fields": selected_fields}
                 if i < len(group_items[1:]) - 1:
                     st.markdown("**and**")
 
+    # --- Update URL with current filters ---
+    query_params = {}
+    for slug, group_name in GROUP_SLUGS.items():
+        if group_name in selected_filters:
+            settings = selected_filters[group_name]
+            query_params[f"{slug}_logic"] = settings["logic"]
+            query_params[f"{slug}_fields"] = ",".join(settings["fields"])
 
+    if "selected_filename" in st.session_state:
+        filters_changed = False
+        for group_name, current in selected_filters.items():
+            prefill = prefilled_filters.get(group_name, {})
+            if prefill.get("logic") != current.get("logic") or set(prefill.get("fields", [])) != set(current.get("fields", [])):
+                filters_changed = True
+                break
+        if filters_changed:
+            st.session_state.selected_filename = None
+
+    # Now set query params
+    st.query_params.clear()
+    st.query_params.update(query_params)
 
 
 # Middle Column: Matching Papers
@@ -328,6 +418,7 @@ with col2:
  
         #st.markdown("### 🔍 Debug: Filter Dict")
         #st.json(selected_filters)
+        #st.markdown(checklist_df)
 
 
         def apply_filters(df, filter_dict):
@@ -505,10 +596,10 @@ with col3:
 
                 sections = {
                     "Document Type": "documenttype_",
-                    "Sample materials": "material_",
-                    "Sample shapes (initial)": "shape_",
-                    "Hydrogen isotopes": "fuel_",
-                    "Hydrogen loading": "loading_",
+                    "Sample Materials": "material_",
+                    "Sample Shapes (initial)": "shape_",
+                    "Hydrogen Isotopes": "fuel_",
+                    "Hydrogen Loading": "loading_",
                     "Stimulation": "stimulation_",
                     "Diagnostics Used": "diagnosticsused_",
                     "Anomalies Claimed": "anomaliesclaimed_"
@@ -516,10 +607,10 @@ with col3:
 
                 justification_fields = {
                     "Document Type": "documenttype_justification",
-                    "Sample materials": "material_justifications",
-                    "Sample shapes (initial)": "shape_justifications",
-                    "Hydrogen isotopes": "fuel_justifications",
-                    "Hydrogen loading": "loading_justifications",
+                    "Sample Materials": "material_justifications",
+                    "Sample Shapes (initial)": "shape_justifications",
+                    "Hydrogen Isotopes": "fuel_justifications",
+                    "Hydrogen Loading": "loading_justifications",
                     "Stimulation": "stimulation_justifications",
                     "Diagnostics Used": "diagnosticsused_justifications",
                     "Anomalies Claimed": "anomaliesclaimed_justifications"
