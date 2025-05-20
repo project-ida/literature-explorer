@@ -107,9 +107,40 @@ GROUP_SLUGS = {
     "hydrogen_loading": "Hydrogen Loading",
     "stimulation": "Stimulation",
     "diagnostics_used": "Diagnostics Used",
-    "anomalies_claimed": "Anomalies Claimed"
+    "anomalies_claimed": "Anomalies Claimed",
+    "publisher_category": "Publisher Category" 
 }
 
+# Define the desired order for Publisher Categories
+PUBLISHER_ORDER = {
+    "ICCF conference": 1,
+    "LENR workshop": 2,
+    "Other conference": 3,
+    "J. Condensed Matter Nucl. Sci.": 4,
+    "Fusion Technol.": 5,   
+    "Phys. Rev. family": 6,
+    "J. Electroanal. Chem.": 7,
+    "J. Fusion Energy": 8,
+    "Nuovo Cimento": 9, 
+    "J. Alloys and Compounds": 10,
+    "Curr. Sci.": 11,
+    "J. Less-Common Met.": 12,
+    "Int. J. Hydrogen Energy": 13,
+    "J. New Energy": 14,
+    "Electrochim. Acta": 15,
+    "Nature": 16,    
+    "Trans. Fusion Technol.": 17,        
+    "Other journal": 18,   
+    "LENR Sourcebook": 19,
+    "LENR-CANR.org": 20,
+    "Book": 21,
+    "EPRI": 22,
+    "Technical report": 23,    
+    "Magazine/newspaper": 24,    
+    "Infinite Energy": 25,    
+    "Other category or unknown": 26,
+    "Unknown": 99  # fallback
+}
 
 import matplotlib.pyplot as plt
 import re
@@ -210,7 +241,34 @@ metadata_df.rename(columns={"filename": "Filename"}, inplace=True)
 checklist_df.rename(columns={"filename": "Filename"}, inplace=True)
 justifications_df.rename(columns={"filename": "Filename"}, inplace=True)
 
-metadata_df = metadata_df[metadata_df["Filename"].notna() & (metadata_df["Filename"].str.strip() != "")]
+metadata_df = metadata_df[
+    metadata_df["Filename"].notna() &
+    (metadata_df["Filename"].str.strip() != "") &
+    (metadata_df["Skip"] != 1)
+]
+
+# Merge Publisher_Category from metadata into checklist
+checklist_df = checklist_df.merge(
+    metadata_df[["Filename", "Publisher_Category"]],
+    on="Filename",
+    how="left"
+)
+
+# One-hot encode Publisher_Category (e.g., publishercategory_elsevier = 1)
+checklist_df["Publisher_Category"] = checklist_df["Publisher_Category"].fillna("Other category or unknown")
+publisher_dummies = pd.get_dummies(checklist_df["Publisher_Category"], prefix="publishercategory")
+checklist_df = pd.concat([checklist_df, publisher_dummies], axis=1)
+
+# Count number of rows for each Publisher Category (for display)
+publisher_counts = checklist_df["Publisher_Category"].value_counts().to_dict()
+
+for col in publisher_dummies.columns:
+    # Extract original category name (e.g., "Elsevier")
+    raw_name = col.replace("publishercategory_", "")
+    display_name = raw_name.replace("_", " ")  # No .title()
+    count = publisher_counts.get(raw_name, 0)
+    FILTER_LABELS[col] = f"{display_name} ({count})"
+
 
 # --- GROUP CHECKBOXES ---
 def get_checkbox_groups(headers):
@@ -222,7 +280,8 @@ def get_checkbox_groups(headers):
         "Hydrogen Loading": [],
         "Stimulation": [],
         "Diagnostics Used": [],
-        "Anomalies Claimed": []
+        "Anomalies Claimed": [],
+        "Publisher Category": []
     }
     for h in headers:
         if h.startswith("documenttype_"):
@@ -241,6 +300,9 @@ def get_checkbox_groups(headers):
             groups["Diagnostics Used"].append(h)
         elif h.startswith("anomaliesclaimed_"):
             groups["Anomalies Claimed"].append(h)
+        elif h.startswith("publishercategory_"):
+            groups["Publisher Category"].append(h)
+
     return groups
 
 def clean_citation(raw_citation):
@@ -285,6 +347,7 @@ with col1:
             st.rerun()
 
 
+
         checklist_headers = checklist_df.columns.tolist()[1:]
         checkbox_groups = get_checkbox_groups(checklist_headers)
         
@@ -296,6 +359,55 @@ with col1:
 
         # --- Step 1: Always show Document Type first ---
         group_name, fields = group_items[0]  # This should be "Document Type"
+
+
+        # --- Show Publisher Category checkboxes at the top ---
+        publisher_fields = checkbox_groups.get("Publisher Category", [])
+
+        # Sort publisher fields by display order
+        publisher_fields.sort(key=lambda x: PUBLISHER_ORDER.get(
+            x.replace("publishercategory_", "").replace("_", " "), 999
+        ))
+
+        with st.expander("Publisher Category", expanded=False):
+            logic_key = "Publisher Category_logic"
+            if logic_key not in st.session_state:
+                st.session_state[logic_key] = "any of:"
+
+            logic = st.radio(
+                "Filter logic",
+                ["any of:"],
+                index=0 if st.session_state[logic_key] == "any of:" else 1,
+                key=logic_key,
+                horizontal=True,
+                format_func=lambda x: f"**{x}**",
+                label_visibility="collapsed"
+            )
+
+            # Select All / None buttons
+            if st.button("Select All", key="publisher_select_all"):
+                for field in publisher_fields:
+                    st.session_state[field] = True
+            if st.button("Select None", key="publisher_select_none"):
+                for field in publisher_fields:
+                    st.session_state[field] = False
+
+            selected_fields = []
+            for field in publisher_fields:
+                label = FILTER_LABELS.get(field, field)
+                if field not in st.session_state:
+                    st.session_state[field] = True
+                checked = st.checkbox(label, key=field)
+                if checked:
+                    selected_fields.append(field)
+
+            selected_filters["Publisher Category"] = {
+                "logic": st.session_state[logic_key],
+                "fields": selected_fields
+            }
+
+        st.markdown("**and**")
+
         with st.expander(group_name, expanded=True):
             options = ["All Document Types"] + [FILTER_LABELS.get(f, f) for f in fields]
 
@@ -342,6 +454,8 @@ with col1:
         # --- Step 2: Show other filters only if "Experimental Paper" is selected ---
         if show_experiment_filters:
             for i, (group_name, fields) in enumerate(group_items[1:]):
+                if group_name == "Publisher Category":
+                    continue  # already rendered above                
                 with st.expander(group_name, expanded=True):
                     prefill = prefilled_filters.get(group_name, {})
                     pre_logic = prefill.get("logic", "any of:")
@@ -384,7 +498,7 @@ with col1:
                             selected_fields.append(field)
 
                     selected_filters[group_name] = {"logic": st.session_state[logic_key], "fields": selected_fields}
-                if i < len(group_items[1:]) - 1:
+                if i < len(group_items[1:]) - 2:
                     st.markdown("**and**")
 
     # --- Update URL with current filters ---
@@ -416,6 +530,7 @@ with col2:
         st.subheader("Matching Papers:")
         st.markdown("<a name='top'></a>", unsafe_allow_html=True)
  
+
         #st.markdown("### 🔍 Debug: Filter Dict")
         #st.json(selected_filters)
         #st.markdown(checklist_df)
@@ -463,6 +578,7 @@ with col2:
             st.markdown("**No papers matching the selected criteria.**")
         else:
             st.markdown(f"**Matching {showing} of {total} total papers.**")
+            st.caption("Only papers that have been reviewed and checklist-classified are included here.")            
 
             # Histogram: Papers per year
             if showing > 0:
