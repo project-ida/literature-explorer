@@ -1,14 +1,13 @@
 
-
 # Human-readable labels for filter variables
 FILTER_LABELS = {
-    "documenttype_tooshort": "Too Short to Classify",
-    "documenttype_experimental": "Experimental Paper",
-    "documenttype_theoretical": "Theoretical Paper",
-    "documenttype_methodsinstrument": "Methods/Instrument Paper",
-    "documenttype_review": "Review Paper",
-    "documenttype_slidedeck": "Slide Deck",
-    "documenttype_other": "Other Document Type",
+    "documenttype_tooshort": "⚠️ Too Short to Classify",
+    "documenttype_experimental": "🔬 Experimental Paper",
+    "documenttype_theoretical": "🧠 Theoretical Paper",
+    "documenttype_methodsinstrument": "🛠️ Methods/Instrument Paper",
+    "documenttype_review": "📖 Review Paper",
+    "documenttype_slidedeck": "📊 Slide Deck",
+    "documenttype_other": "❓ Other Document Type",
 
     "material_palladium": "Palladium (Pd)",
     "material_titanium": "Titanium (Ti)",
@@ -102,7 +101,7 @@ FILTER_LABELS = {
 GROUP_SLUGS = {
     "document_type": "Document Type",
     "sample_materials": "Sample Materials",
-    "sample_shapes_(initial)": "Sample Shapes (initial)",
+    "sample_shapes": "Sample Shapes",
     "hydrogen_isotopes": "Hydrogen Isotopes",
     "hydrogen_loading": "Hydrogen Loading",
     "stimulation": "Stimulation",
@@ -141,6 +140,7 @@ PUBLISHER_ORDER = {
     "Other category or unknown": 26,
     "Unknown": 99  # fallback
 }
+
 
 import matplotlib.pyplot as plt
 import re
@@ -187,12 +187,43 @@ st.markdown("""
     li {
         margin-bottom: 0.1rem;
     }    
-    .custom-filename {
+    hr {
+        margin-block-start: 0.1em !important;
+        margin-block-end: 0.1em !important;
+    }
+    .custom-details1 {
         color: #FF4B4B; /* Same as default Streamlit body text color */
         font-size: 1.25rem;
-        font-weight: 600;
+        font-weight: 400;
         margin-bottom: 0.5rem;
     }  
+    .custom-details2 {
+        color: #000000; 
+        font-size: 1.25rem;
+        font-weight: 400;
+        margin-bottom: 0.5rem;
+    }     
+    .custom-details3 {
+        color: #CCCCCC; 
+        font-size: 1.25rem;
+        font-weight: 400;
+        margin-bottom: 0.5rem;
+    } 
+    .custom-matches1 {
+        color: #FF4B4B; /* Same as default Streamlit body text color */
+        font-weight: 400;
+        margin-bottom: 0.5rem;
+    }  
+    .custom-matches2 {
+        color: #000000; 
+        font-weight: 400;
+        margin-bottom: 0.5rem;
+    }     
+    .custom-matches3 {
+        color: #CCCCCC; 
+        font-weight: 400;
+        margin-bottom: 0.5rem;
+    } 
     label[data-testid="stWidgetLabel"] {
         min-height: 0px !important;
         padding: 0 !important;
@@ -275,7 +306,7 @@ def get_checkbox_groups(headers):
     groups = {
         "Document Type": [],
         "Sample Materials": [],
-        "Sample Shapes (initial)": [],
+        "Sample Shapes": [],
         "Hydrogen Isotopes": [],
         "Hydrogen Loading": [],
         "Stimulation": [],
@@ -289,7 +320,7 @@ def get_checkbox_groups(headers):
         elif h.startswith("material_"):
             groups["Sample Materials"].append(h)
         elif h.startswith("shape_"):
-            groups["Sample Shapes (initial)"].append(h)
+            groups["Sample Shapes"].append(h)
         elif h.startswith("fuel_"):
             groups["Hydrogen Isotopes"].append(h)
         elif h.startswith("loading_"):
@@ -314,6 +345,16 @@ def clean_citation(raw_citation):
     # Cut at First Author: or Keywords:
     citation = re.split(r"First Author:|Keywords:", citation)[0]
     return citation.strip()
+
+def should_expand_group(group_name, fields, prefilled_filters):
+    selected_fields = prefilled_filters.get(group_name, {}).get("fields", [])
+    
+    # If no fields are prefilled (i.e. changing document type), fallback to session_state
+    if not selected_fields:
+        return not all(st.session_state.get(field, True) for field in fields)
+
+    return set(selected_fields) != set(fields)
+
 
 # --- UI ---
 st.title("LENR Literature Explorer")
@@ -346,7 +387,7 @@ with col1:
             # Rerun the app to refresh the interface
             st.rerun()
 
-
+        st.markdown("**Filter papers by**")
 
         checklist_headers = checklist_df.columns.tolist()[1:]
         checkbox_groups = get_checkbox_groups(checklist_headers)
@@ -369,10 +410,14 @@ with col1:
             x.replace("publishercategory_", "").replace("_", " "), 999
         ))
 
-        with st.expander("Publisher Category", expanded=False):
+        with st.expander("Publisher Category", expanded=should_expand_group("Publisher Category", publisher_fields, prefilled_filters)):
+
             logic_key = "Publisher Category_logic"
+
+            prefill = prefilled_filters.get("Publisher Category", {})
+
             if logic_key not in st.session_state:
-                st.session_state[logic_key] = "any of:"
+                st.session_state[logic_key] = prefill.get("logic", "any of:")
 
             logic = st.radio(
                 "Filter logic",
@@ -395,8 +440,16 @@ with col1:
             selected_fields = []
             for field in publisher_fields:
                 label = FILTER_LABELS.get(field, field)
+
+
+                pre_fields = set(prefill.get("fields", []))
+
                 if field not in st.session_state:
-                    st.session_state[field] = True
+                    if pre_fields:
+                        st.session_state[field] = field in pre_fields
+                    else:
+                        st.session_state[field] = True  # default to all selected
+
                 checked = st.checkbox(label, key=field)
                 if checked:
                     selected_fields.append(field)
@@ -453,10 +506,14 @@ with col1:
 
         # --- Step 2: Show other filters only if "Experimental Paper" is selected ---
         if show_experiment_filters:
+            st.markdown("**and**")
+
             for i, (group_name, fields) in enumerate(group_items[1:]):
-                if group_name == "Publisher Category":
+                #if group_name == "Publisher Category":
+                if group_name in ["Publisher Category", "Hydrogen Isotopes"]:
                     continue  # already rendered above                
-                with st.expander(group_name, expanded=True):
+                
+                with st.expander(group_name, expanded=should_expand_group(group_name, fields, prefilled_filters)):
                     prefill = prefilled_filters.get(group_name, {})
                     pre_logic = prefill.get("logic", "any of:")
                     pre_fields = set(prefill.get("fields", []))
@@ -578,7 +635,7 @@ with col2:
             st.markdown("**No papers matching the selected criteria.**")
         else:
             st.markdown(f"**Matching {showing} of {total} total papers.**")
-            st.caption("Only papers that have been reviewed and checklist-classified are included here.")            
+            #st.caption("Only papers that have been reviewed and checklist-classified are included here.")            
 
             # Histogram: Papers per year
             if showing > 0:
@@ -586,9 +643,11 @@ with col2:
                 # Determine year range
                 min_year = int(merged_df["Year"].min())
                 max_year = int(merged_df["Year"].max())
+                min_year = 1985
+                max_year = 2025
                 year_span = max_year - min_year + 1
 
-                if year_span > 40:
+                if year_span > 41:
                     # Use 5-year bins
                     bin_size = 5
                     bins = range(min_year - (min_year % bin_size), max_year + bin_size, bin_size)
@@ -599,14 +658,30 @@ with col2:
                     year_counts = merged_df["Year"].value_counts().sort_index()
                     labels = [int(y) for y in year_counts.index]
 
-                # Plot
-                fig, ax = plt.subplots(figsize=(8, 3))
-                ax.bar(labels, year_counts.values, color="skyblue")
-                ax.set_xlabel("Year")
-                ax.set_ylabel("Number of Papers")
-                ax.yaxis.get_major_locator().set_params(integer=True)
-                ax.tick_params(axis='x', labelrotation=45)
-                st.pyplot(fig)
+            zoom_enabled = st.checkbox("Zoom to Fit Y-Axis", value=False)
+
+            # Plot
+            fig, ax = plt.subplots(figsize=(8, 3))
+
+            # Plot logic
+            ax.bar(labels, year_counts.values, color="skyblue")
+
+            # Set axis limits
+            ax.set_xlim(1985, 2025)
+
+            if zoom_enabled:
+                y_max = max(year_counts.values) if len(year_counts) > 0 else 1
+                ax.set_ylim(0, int(y_max * 1.1))
+            else:
+                ax.set_ylim(0, 200)
+
+            # Set labels and style
+            ax.set_xlabel("Year")
+            ax.set_ylabel("Number of Papers")
+            ax.tick_params(axis='x', labelrotation=45)
+
+            # Render in Streamlit
+            st.pyplot(fig)
 
             st.markdown("---")
 
@@ -653,13 +728,35 @@ with col2:
                 st.session_state.selected_filename = None
 
             for idx, row in merged_df.iloc[start:end].iterrows():
+                filename = row["Filename"]
                 year = int(row["Year"]) if not pd.isna(row["Year"]) else "Unknown"
-                if st.button(f"{year}: {row['Filename']}", key=f"btn_{start + idx}"):
-                    st.session_state.selected_filename = row['Filename']
-                    st.rerun()
-                st.caption(clean_citation(row['Citation']))
+                matched_authors = row.get("Matched All Authors", "")
+                matched_title = row.get("Matched Title", "")
+                matched_publisher = row.get("Matched Publisher", "")
+                publisher_category = row.get("Publisher_Category", "")
 
-            st.markdown("---")
+                if matched_publisher and publisher_category and matched_publisher.strip() != publisher_category.strip():
+                    matched_publisher_display = f"{matched_publisher} (category: {publisher_category})"
+                else:
+                    matched_publisher_display = matched_publisher
+
+                display_name = f"<b>{year}</b>: {matched_authors}"
+
+                # Create a nice styled block with button at the bottom
+                st.markdown(f"""
+                <div style="border: 0px solid #ddd; padding: 0rem; border-radius: 0.5rem; margin-bottom: 1rem;">
+                    <div class="custom-matches1">{display_name}</div>
+                    <div class="custom-matches2">{matched_title}</div>
+                    <div class="custom-matches3">{matched_publisher_display}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Native, clean, safe button
+                if st.button(f"🔍 View Details", key=f"btn_{start + idx}"):
+                    st.session_state.selected_filename = filename
+                    st.rerun()
+
+                st.markdown("---")
 
             # BOTTOM pagination block
             # Pagination: BOTTOM (just visual mirror)
@@ -691,13 +788,26 @@ with col3:
             # Show citation and PDF link at the top
             meta_row = metadata_df[metadata_df["Filename"] == filename]
             if not meta_row.empty:
+
+                # --- NEW: Show matched metadata fields with conditional bracket logic ---
+                matched_title = meta_row.iloc[0].get("Matched Title", "")
+                matched_authors = meta_row.iloc[0].get("Matched All Authors", "")
+                matched_publisher = meta_row.iloc[0].get("Matched Publisher", "")
+                publisher_category = meta_row.iloc[0].get("Publisher_Category", "")
                 citation = clean_citation(meta_row.iloc[0].get("Citation", ""))
                 url = meta_row.iloc[0].get("URL", "")
                 year = meta_row.iloc[0].get("Year", "")
-                display_name = f"{int(year)}: {filename}" if pd.notna(year) else filename
-                st.markdown(f"<div class='custom-filename'>{display_name}</div>", unsafe_allow_html=True)
-                if isinstance(citation, str) and citation.strip():
-                    st.markdown(citation.strip())
+                display_name = f"<b>{int(year)}</b>: {matched_authors}" if pd.notna(year) else matched_authors
+
+                if matched_publisher and publisher_category and matched_publisher.strip() != publisher_category.strip():
+                    matched_publisher_display = f"{matched_publisher} (category: {publisher_category})"
+                else:
+                    matched_publisher_display = matched_publisher
+
+                st.markdown(f"<div class='custom-details1'>{display_name}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='custom-details2'>{matched_title}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='custom-details3'>{matched_publisher_display}</div>", unsafe_allow_html=True)
+
                 if isinstance(url, str) and url.strip():
                     st.markdown(f"[📄 View PDF]({url})")
 
@@ -708,12 +818,12 @@ with col3:
                 # Add pages_long if available
                 pages_long = just_row.iloc[0].get("pages_long")
                 if pd.notna(pages_long):
-                    st.markdown(f"**Length**: {int(pages_long)} page(s)")
+                    st.markdown(f"{int(pages_long)} page(s)")
 
                 sections = {
                     "Document Type": "documenttype_",
                     "Sample Materials": "material_",
-                    "Sample Shapes (initial)": "shape_",
+                    "Sample Shapes": "shape_",
                     "Hydrogen Isotopes": "fuel_",
                     "Hydrogen Loading": "loading_",
                     "Stimulation": "stimulation_",
@@ -724,7 +834,7 @@ with col3:
                 justification_fields = {
                     "Document Type": "documenttype_justification",
                     "Sample Materials": "material_justifications",
-                    "Sample Shapes (initial)": "shape_justifications",
+                    "Sample Shapes": "shape_justifications",
                     "Hydrogen Isotopes": "fuel_justifications",
                     "Hydrogen Loading": "loading_justifications",
                     "Stimulation": "stimulation_justifications",
@@ -735,39 +845,74 @@ with col3:
                 is_experimental = bool(just_check.iloc[0].get("documenttype_experimental") == 1)
 
                 for section_title, prefix in sections.items():
+
+                    if section_title == "Document Type":
+                        # Compose the label + justification together in one Markdown block
+                        document_type_block = ""
+
+                        # Checklist label
+                        for col in just_check.columns:
+                            if col.startswith(prefix) and just_check.iloc[0][col] == 1:
+                                label = FILTER_LABELS.get(col, col)
+                                document_type_block += f"<p><strong>{label}</strong></p>"
+
+                        # Justification text
+                        just_col = justification_fields.get(section_title)
+                        if just_col in just_row.columns:
+                            justification = just_row.iloc[0][just_col]
+                            if isinstance(justification, str) and justification.strip():
+                                formatted = re.sub(r'\s*-\s*', ' ', justification).replace('" "', '"<br>"')
+                                document_type_block += f"<p style='color:gray'>{formatted}</p>"
+
+                        # Wrap in a styled div
+                        st.markdown(f"""
+                            <div style="background-color: #f5f5f5; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
+                                {document_type_block}
+                            </div>
+                        """, unsafe_allow_html=True)
+
                     if section_title != "Document Type" and not is_experimental:
                         continue  # Show only Document Type unless paper is experimental
 
-                    st.markdown(f"##### {section_title}")
+                    if section_title != "Document Type":
+                        st.markdown(f"##### {section_title}")
 
+                        # Add shape_summary above the checklist entries in Forms section
+                        if section_title == "Forms":
+                            shape_summary = just_row.iloc[0].get("shape_summary")
+                            if isinstance(shape_summary, str) and shape_summary.strip():
+                                st.markdown(f"<i>{shape_summary.strip()}</i>", unsafe_allow_html=True)
 
-                    # Add shape_summary above the checklist entries in Forms section
-                    if section_title == "Forms":
-                        shape_summary = just_row.iloc[0].get("shape_summary")
-                        if isinstance(shape_summary, str) and shape_summary.strip():
-                            st.markdown(f"<i>{shape_summary.strip()}</i>", unsafe_allow_html=True)
+                        # Checklist variables
+                        for col in just_check.columns:
+                            if col.startswith(prefix) and just_check.iloc[0][col] == 1:
+                                label = FILTER_LABELS.get(col, col)
+                                if section_title == "Document Type":
+                                    st.markdown(f"**{label}**")  # No bullet
+                                else:
+                                    st.markdown(f"- **{label}**")  # Bullet for other sections
 
-                    # Checklist variables
-                    for col in just_check.columns:
-                        if col.startswith(prefix) and just_check.iloc[0][col] == 1:
-                            label = FILTER_LABELS.get(col, col)
-                            st.markdown(f"- **{label}**")
+                        # Justification paragraph
+                        just_col = justification_fields.get(section_title)
+                        if just_col in just_row.columns:
+                            justification = just_row.iloc[0][just_col]
+                            if isinstance(justification, str) and justification.strip():
+                                # Insert line breaks where a new justification starts
+                                formatted = re.sub(r'\s*-\s*', ' ', justification).replace('" "', '"<br>"')
 
-                    # Justification paragraph
-                    just_col = justification_fields.get(section_title)
-                    if just_col in just_row.columns:
-                        justification = just_row.iloc[0][just_col]
-                        if isinstance(justification, str) and justification.strip():
-                            # Insert line breaks where a new justification starts
-                            formatted = re.sub(r'\s*-\s*', ' ', justification).replace('" "', '"<br>"')
-
-                            st.markdown(f"<span style='color:gray'>{formatted}</span>", unsafe_allow_html=True)
+                                st.markdown(f"<span style='color:gray'>{formatted}</span>", unsafe_allow_html=True)
 
                 # Add controls_summary if available
                 controls = just_row.iloc[0].get("controls_summary")
                 if is_experimental and isinstance(controls, str) and controls.strip():
                     st.markdown("##### Control Experiments")
                     st.markdown(f"<span style='color:gray'>{controls.strip()}</span>", unsafe_allow_html=True)
+
+                with st.expander("Citation"):
+                    
+                    if isinstance(citation, str) and citation.strip():
+                        st.markdown(f"**Full citation:** {citation.strip()}")                  
+                    st.markdown(f"**Internal filename:** {filename}")                        
 
                 # Corrections submission via embedded Google Form
                 if filename:
