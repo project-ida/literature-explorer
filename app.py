@@ -1,3 +1,5 @@
+BASE_URL = "https://literature-explorer.streamlit.app/"
+#BASE_URL = "http://localhost:8501/"
 
 # Human-readable labels for filter variables
 FILTER_LABELS = {
@@ -150,6 +152,36 @@ import streamlit.components.v1 as components
 
 from urllib.parse import urlencode
 
+@st.cache_data
+def load_url_mappings():
+    df = pd.read_csv("url-mappings.csv")
+    return dict(zip(df["slug"], df["query_string"]))
+
+
+debug_mode = st.query_params.get("debug") == "1"
+
+query_params = st.query_params
+short_slug = query_params.get("link", None)
+
+if short_slug:
+    mappings = load_url_mappings()
+    if short_slug in mappings:
+        raw_query_string = mappings[short_slug].split("#")[0]  # remove #top or any other fragment
+        sep = "&" if "?" in raw_query_string else "?"
+        full_url = f"{BASE_URL}{raw_query_string}{sep}processedlink={short_slug}"
+
+        st.markdown(f"""
+            <script>
+                window.location.href = "{full_url}";
+            </script>
+            <p>Redirecting to <a href="{full_url}">{full_url}</a>...</p>
+        """, unsafe_allow_html=True)
+        st.stop()
+
+    else:
+        st.error(f"No preset found for `{short_slug}`.")
+        st.stop()
+
 def slugify_group_name(name):
     return name.replace(" ", "_").lower()
 
@@ -167,39 +199,6 @@ def parse_query_params():
 
 reset_triggered = st.session_state.pop("reset_triggered", False)
 
-import pandas as pd
-
-@st.cache_data
-def load_url_mappings():
-    df = pd.read_csv("url-mappings.csv")
-    return dict(zip(df["slug"], df["query_string"]))
-
-
-debug_mode = st.query_params.get("debug") == "1"
-
-query_params = st.query_params
-short_slug = query_params.get("link", None)
-
-BASE_URL = "https://literature-explorer.streamlit.app/"
-#BASE_URL = "http://localhost:8501/"
-
-import streamlit.components.v1 as components
-
-if short_slug:
-    mappings = load_url_mappings()
-    if short_slug in mappings:
-        raw_query_string = mappings[short_slug].split("#")[0]  # remove #top or any other fragment
-        sep = "&" if "?" in raw_query_string else "?"
-        full_url = f"{BASE_URL}{raw_query_string}{sep}processedlink={short_slug}"
-
-        st.markdown(f"""
-            <meta http-equiv="refresh" content="0; url={full_url}">
-            <p>Redirecting to <a href="{full_url}">{full_url}</a>...</p>
-        """, unsafe_allow_html=True)
-        st.stop()
-    else:
-        st.error(f"No preset found for `{short_slug}`.")
-        st.stop()
 
 
 st.set_page_config(layout="wide")
@@ -600,6 +599,16 @@ with col1:
                 if i < len(group_items[1:]) - 2:
                     st.markdown("**and**")
 
+            # Rebuild full query string
+            current_params = st.query_params
+            query_string = urlencode(current_params, doseq=True)
+            full_url = f"{BASE_URL}/?{query_string}"
+
+            st.markdown("##### 🔗 Share This Filter Configuration")
+            #st.code(full_url)
+            st.button("📋 Copy URL", on_click=lambda: st.toast("✅ Copied!"), use_container_width=True)
+
+
     # --- Update URL with current filters ---
     query_params = {}
     for slug, group_name in GROUP_SLUGS.items():
@@ -621,6 +630,8 @@ with col1:
     # Now set query params
     st.query_params.clear()
     st.query_params.update(query_params)
+
+
 
 
 # Middle Column: Matching Papers
