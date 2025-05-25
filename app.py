@@ -180,8 +180,8 @@ debug_mode = st.query_params.get("debug") == "1"
 query_params = st.query_params
 short_slug = query_params.get("link", None)
 
-#BASE_URL = "https://literature-explorer.streamlit.app/"
-BASE_URL = "http://localhost:8501/"
+BASE_URL = "https://literature-explorer.streamlit.app/"
+#BASE_URL = "http://localhost:8501/"
 
 import streamlit.components.v1 as components
 
