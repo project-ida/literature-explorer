@@ -167,6 +167,37 @@ def parse_query_params():
 
 reset_triggered = st.session_state.pop("reset_triggered", False)
 
+import pandas as pd
+
+@st.cache_data
+def load_url_mappings():
+    df = pd.read_csv("url-mappings.csv")
+    return dict(zip(df["slug"], df["query_string"]))
+
+query_params = st.query_params
+short_slug = query_params.get("link", None)
+
+#BASE_URL = "https://literature-explorer.streamlit.app/"
+BASE_URL = "http://localhost:8501/"
+
+import streamlit.components.v1 as components
+
+if short_slug:
+    mappings = load_url_mappings()
+    if short_slug in mappings:
+        raw_query_string = mappings[short_slug].split("#")[0]  # remove #top or any other fragment
+        sep = "&" if "?" in raw_query_string else "?"
+        full_url = f"{BASE_URL}{raw_query_string}{sep}processedlink={short_slug}"
+
+        st.markdown(f"""
+            <meta http-equiv="refresh" content="0; url={full_url}">
+            <p>Redirecting to <a href="{full_url}">{full_url}</a>...</p>
+        """, unsafe_allow_html=True)
+        st.stop()
+    else:
+        st.error(f"No preset found for `{short_slug}`.")
+        st.stop()
+
 
 st.set_page_config(layout="wide")
 
@@ -366,6 +397,13 @@ with col1:
     with st.container(border=True, height=800):
         st.subheader("Filter Papers:")
 
+        if "processedlink" in st.query_params:
+            processedlink = st.query_params["processedlink"]
+            st.markdown(f"""
+                <div style="background-color: #eef2f5; border-left: 4px solid #2c91f0; padding: 0.75rem; margin-bottom: 1rem; border-radius: 0.25rem;">
+                    Filter configuration '<strong>{processedlink}</strong>' has been loaded.
+                </div>
+            """, unsafe_allow_html=True)
 
         if st.button("🔄 Reset All Filters"):
             # Clear query params
@@ -630,6 +668,15 @@ with col2:
 
         total = metadata_df.shape[0]
         showing = merged_df.shape[0]
+
+        # Debug: Show filenames in total but not in filtered matches
+        missing_filenames = set(metadata_df["Filename"]) - set(merged_df["Filename"])
+        #if missing_filenames:
+            # DEBUGGING
+            #st.markdown("### ⚠️ Files excluded by current filters:")
+            #for fname in sorted(missing_filenames):
+            #    st.code(fname)
+
 
         if merged_df.empty:
             st.markdown("**No papers matching the selected criteria.**")
@@ -912,7 +959,15 @@ with col3:
                     
                     if isinstance(citation, str) and citation.strip():
                         st.markdown(f"**Full citation:** {citation.strip()}")                  
-                    st.markdown(f"**Internal filename:** {filename}")                        
+                    #st.markdown(f"**Internal filename:** {filename}")                        
+                    google_file_id = meta_row.iloc[0].get("Google_FileID", "")
+                    if isinstance(google_file_id, str) and google_file_id.strip():
+                        #drive_url = f"https://drive.google.com/uc?export=download&id={google_file_id.strip()}"
+                        drive_url = f"https://drive.google.com/file/d/{google_file_id.strip()}/view"
+                        st.markdown(f"**Internal filename:** {filename} ([📄]({drive_url}))")
+                    else:
+                        st.markdown(f"**Internal filename:** {filename}")
+
 
                 # Corrections submission via embedded Google Form
                 if filename:
