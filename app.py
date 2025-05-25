@@ -1,3 +1,5 @@
+
+
 BASE_URL = "https://literature-explorer.streamlit.app/"
 #BASE_URL = "http://localhost:8501/"
 
@@ -166,21 +168,22 @@ short_slug = query_params.get("link", None)
 if short_slug:
     mappings = load_url_mappings()
     if short_slug in mappings:
-        raw_query_string = mappings[short_slug].split("#")[0]  # remove #top or any other fragment
+        raw_query_string = mappings[short_slug].split("#")[0]  # remove fragment if any
         sep = "&" if "?" in raw_query_string else "?"
         full_url = f"{BASE_URL}{raw_query_string}{sep}processedlink={short_slug}"
 
         st.markdown(f"""
-            <script>
-                window.location.href = "{full_url}";
-            </script>
-            <p>Redirecting to <a href="{full_url}">{full_url}</a>...</p>
+            <div style="background-color: #eef2f5; border-left: 4px solid #2c91f0; padding: 1rem; margin-bottom: 1rem; border-radius: 0.25rem;">
+                ✅ Found filter configuration for <strong>{short_slug}</strong>.<br><br>
+                👉 <a href="{full_url}"><strong>Click here to load this filter configuration</strong></a>
+            </div>
         """, unsafe_allow_html=True)
-        st.stop()
 
+        st.stop()
     else:
         st.error(f"No preset found for `{short_slug}`.")
         st.stop()
+
 
 def slugify_group_name(name):
     return name.replace(" ", "_").lower()
@@ -598,15 +601,6 @@ with col1:
                     selected_filters[group_name] = {"logic": st.session_state[logic_key], "fields": selected_fields}
                 if i < len(group_items[1:]) - 2:
                     st.markdown("**and**")
-
-            # Rebuild full query string
-            current_params = st.query_params
-            query_string = urlencode(current_params, doseq=True)
-            full_url = f"{BASE_URL}/?{query_string}"
-
-            st.markdown("##### 🔗 Share This Filter Configuration")
-            #st.code(full_url)
-            st.button("📋 Copy URL", on_click=lambda: st.toast("✅ Copied!"), use_container_width=True)
 
 
     # --- Update URL with current filters ---
