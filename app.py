@@ -174,11 +174,14 @@ def load_url_mappings():
     df = pd.read_csv("url-mappings.csv")
     return dict(zip(df["slug"], df["query_string"]))
 
+
+debug_mode = st.query_params.get("debug") == "1"
+
 query_params = st.query_params
 short_slug = query_params.get("link", None)
 
-BASE_URL = "https://literature-explorer.streamlit.app/"
-#BASE_URL = "http://localhost:8501/"
+#BASE_URL = "https://literature-explorer.streamlit.app/"
+BASE_URL = "http://localhost:8501/"
 
 import streamlit.components.v1 as components
 
@@ -306,7 +309,8 @@ justifications_df.rename(columns={"filename": "Filename"}, inplace=True)
 metadata_df = metadata_df[
     metadata_df["Filename"].notna() &
     (metadata_df["Filename"].str.strip() != "") &
-    (metadata_df["Skip"] != 1)
+    (metadata_df["Skip"] != 1) &
+    metadata_df["Processed"].notna()    
 ]
 
 # Merge Publisher_Category from metadata into checklist
@@ -670,12 +674,12 @@ with col2:
         showing = merged_df.shape[0]
 
         # Debug: Show filenames in total but not in filtered matches
-        missing_filenames = set(metadata_df["Filename"]) - set(merged_df["Filename"])
-        #if missing_filenames:
-            # DEBUGGING
-            #st.markdown("### ⚠️ Files excluded by current filters:")
-            #for fname in sorted(missing_filenames):
-            #    st.code(fname)
+        if debug_mode:
+            missing_filenames = set(metadata_df["Filename"]) - set(merged_df["Filename"])
+            if missing_filenames:
+                st.markdown("### ⚠️ Files excluded by current filters:")
+                for fname in sorted(missing_filenames):
+                    st.code(fname)
 
 
         if merged_df.empty:
@@ -781,6 +785,9 @@ with col2:
                 matched_title = row.get("Matched Title", "")
                 matched_publisher = row.get("Matched Publisher", "")
                 publisher_category = row.get("Publisher_Category", "")
+
+                matched_publisher = str(matched_publisher) if pd.notna(matched_publisher) else ""
+                publisher_category = str(publisher_category) if pd.notna(publisher_category) else ""
 
                 if matched_publisher and publisher_category and matched_publisher.strip() != publisher_category.strip():
                     matched_publisher_display = f"{matched_publisher} (category: {publisher_category})"
