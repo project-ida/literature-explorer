@@ -283,7 +283,7 @@ button[data-testid="stBaseButton-secondary"] {
     </style>
 """, unsafe_allow_html=True)
 
-st.cache_data.clear()
+#st.cache_data.clear()
 
 # --- LOAD DATA FROM PUBLIC GOOGLE SHEETS WITH CACHING ---
 @st.cache_data
