@@ -1,7 +1,7 @@
-
-
 BASE_URL = "https://literature-explorer.streamlit.app/"
 #BASE_URL = "http://localhost:8501/"
+
+SUPPRESS_CACHING = 0
 
 # Human-readable labels for filter variables
 FILTER_LABELS = {
@@ -283,7 +283,8 @@ button[data-testid="stBaseButton-secondary"] {
     </style>
 """, unsafe_allow_html=True)
 
-#st.cache_data.clear()
+if SUPPRESS_CACHING:
+    st.cache_data.clear()
 
 # --- LOAD DATA FROM PUBLIC GOOGLE SHEETS WITH CACHING ---
 @st.cache_data
