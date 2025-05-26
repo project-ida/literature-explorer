@@ -283,7 +283,7 @@ button[data-testid="stBaseButton-secondary"] {
     </style>
 """, unsafe_allow_html=True)
 
-#st.cache_data.clear()
+st.cache_data.clear()
 
 # --- LOAD DATA FROM PUBLIC GOOGLE SHEETS WITH CACHING ---
 @st.cache_data
@@ -833,6 +833,11 @@ with col2:
             # Back to Top button
             st.markdown("[⬆ Back to Top](#top)")
 
+            # After all other content in col2
+            if not merged_df.empty:
+                matched_filenames = "\n".join(merged_df["Filename"].dropna().astype(str).tolist())
+                st.markdown("###### All Matched Identifiers (for further processing):")
+                st.text_area("", matched_filenames, height=100)           
 
 
 
@@ -967,26 +972,26 @@ with col3:
                     st.markdown("##### Control Experiments")
                     st.markdown(f"<span style='color:gray'>{controls.strip()}</span>", unsafe_allow_html=True)
 
-                with st.expander("Citation"):
+                with st.expander("Citation & Identifier"):
                     
                     if isinstance(citation, str) and citation.strip():
-                        st.markdown(f"**Full citation:** {citation.strip()}")                  
+                        st.markdown(f"**Full Citation:** {citation.strip()}")                  
                     #st.markdown(f"**Internal filename:** {filename}")                        
                     google_file_id = meta_row.iloc[0].get("Google_FileID", "")
                     if isinstance(google_file_id, str) and google_file_id.strip():
                         #drive_url = f"https://drive.google.com/uc?export=download&id={google_file_id.strip()}"
                         drive_url = f"https://drive.google.com/file/d/{google_file_id.strip()}/view"
-                        st.markdown(f"**Internal filename:** {filename} ([📄]({drive_url}))")
+                        st.markdown(f"**Internal Identifier:** {filename} ([📄]({drive_url}))")
                     else:
-                        st.markdown(f"**Internal filename:** {filename}")
+                        st.markdown(f"**Internal Identifier:** {filename}")
 
 
                 # Corrections submission via embedded Google Form
                 if filename:
-                    with st.expander("Submit a Correction"):
+                    with st.expander("Submit a Comment"):
                         url = f"https://docs.google.com/forms/d/e/1FAIpQLSfF2xt7APZP0Q57QhODjkfxRYDOYiUSp5jTVo_8N68-2FCnww/viewform?embedded=true&entry.1418398831={filename}&hl=en"
                         st.markdown(
-                            f"""<iframe src="{url}" width="100%" height="750" frameborder="0" marginheight="0" marginwidth="0">Loading…</iframe>""",
+                            f"""<iframe src="{url}" width="100%" height="900" frameborder="0" marginheight="0" marginwidth="0">Loading…</iframe>""",
                             unsafe_allow_html=True
                         )
 
