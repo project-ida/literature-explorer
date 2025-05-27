@@ -110,7 +110,7 @@ GROUP_SLUGS = {
     "hydrogen_loading": "Hydrogen Loading",
     "stimulation": "Stimulation",
     "diagnostics_used": "Diagnostics Used",
-    "anomalies_claimed": "Anomalies Claimed",
+    "anomalies_claimed": "Anomaly Types",
     "publisher_category": "Publisher Category" 
 }
 
@@ -196,6 +196,11 @@ def parse_query_params():
                 parsed.setdefault(group, {})["logic"] = value
             elif key == f"{slug}_fields":
                 parsed.setdefault(group, {})["fields"] = value.split(",") if value else []
+
+    # only set anomaly checkboxes if not already set by user interaction
+    if "anomaly_reporting_mode" not in st.session_state:
+        st.session_state["anomaly_reporting_mode"] = st.query_params.get("anomaly_reporting_mode", "reported")
+
     return parsed
 
 
@@ -300,6 +305,8 @@ metadata_df = load_csv(metadata_url)
 checklist_df = load_csv(checklist_url)
 justifications_df = load_csv(justifications_url)
 
+checklist_df = checklist_df.apply(pd.to_numeric, errors="ignore").replace({'0': 0, '1': 1}).astype(int, errors="ignore")
+
 # --- Standardize column names ---
 metadata_df.columns = metadata_df.columns.str.strip()
 checklist_df.columns = checklist_df.columns.str.strip()
@@ -349,7 +356,7 @@ def get_checkbox_groups(headers):
         "Hydrogen Loading": [],
         "Stimulation": [],
         "Diagnostics Used": [],
-        "Anomalies Claimed": [],
+        "Anomaly Types": [],
         "Publisher Category": []
     }
     for h in headers:
@@ -368,7 +375,7 @@ def get_checkbox_groups(headers):
         elif h.startswith("diagnosticsused_"):
             groups["Diagnostics Used"].append(h)
         elif h.startswith("anomaliesclaimed_"):
-            groups["Anomalies Claimed"].append(h)
+            groups["Anomaly Types"].append(h)
         elif h.startswith("publishercategory_"):
             groups["Publisher Category"].append(h)
 
@@ -429,6 +436,11 @@ with col1:
             # Clear filename selection
             st.session_state.pop("selected_filename", None)
 
+            st.session_state.pop("anomaly_reporting_reported", None)
+            st.session_state.pop("anomaly_reporting_none", None)
+            st.session_state["anomaly_reporting_reported"] = True
+            st.session_state["anomaly_reporting_none"] = True
+
             # Rerun the app to refresh the interface
             st.rerun()
 
@@ -437,6 +449,12 @@ with col1:
         checklist_headers = checklist_df.columns.tolist()[1:]
         checkbox_groups = get_checkbox_groups(checklist_headers)
         
+        # Ensure defaults are set before parsing (for first load or reset)
+        if "anomaly_reporting_reported" not in st.session_state:
+            st.session_state["anomaly_reporting_reported"] = True
+        if "anomaly_reporting_none" not in st.session_state:
+            st.session_state["anomaly_reporting_none"] = True
+
         prefilled_filters = parse_query_params()
 
 
@@ -558,6 +576,25 @@ with col1:
                 if group_name in ["Publisher Category", "Hydrogen Isotopes"]:
                     continue  # already rendered above                
                 
+                if group_name == "Anomaly Types":
+                    
+                    with st.expander("Anomalies Claimed", expanded=True):
+                        if "anomaly_reporting_mode" not in st.session_state:
+                            st.session_state["anomaly_reporting_mode"] = "reported"  # default
+
+                        mode = st.radio(
+                            "",
+                            ["reported", "none"],
+                            format_func=lambda x: "Yes" if x == "reported" else "No",
+                            key="anomaly_reporting_mode",
+                            horizontal=True
+                        )
+     
+                    if st.session_state["anomaly_reporting_mode"] == "none":
+                        continue  # Skip rendering the "Anomaly Types" section entirely
+                    else: 
+                        st.markdown("**and**")
+
                 with st.expander(group_name, expanded=should_expand_group(group_name, fields, prefilled_filters)):
                     prefill = prefilled_filters.get(group_name, {})
                     pre_logic = prefill.get("logic", "any of:")
@@ -601,7 +638,7 @@ with col1:
 
                     selected_filters[group_name] = {"logic": st.session_state[logic_key], "fields": selected_fields}
                 if i < len(group_items[1:]) - 2:
-                    st.markdown("**and**")
+                    st.markdown("**and**")                 
 
 
     # --- Update URL with current filters ---
@@ -622,6 +659,8 @@ with col1:
         if filters_changed:
             st.session_state.selected_filename = None
 
+    query_params["anomaly_reporting_mode"] = st.session_state.get("anomaly_reporting_mode", "reported")
+
     # Now set query params
     st.query_params.clear()
     st.query_params.update(query_params)
@@ -639,12 +678,33 @@ with col2:
         #st.markdown("### 🔍 Debug: Filter Dict")
         #st.json(selected_filters)
         #st.markdown(checklist_df)
-
-
         def apply_filters(df, filter_dict):
             mask = pd.Series([True] * len(df))
 
+            # Check if we're filtering for experimental papers
+            doc_type_settings = filter_dict.get("Document Type", {})
+            is_experimental = (
+                doc_type_settings.get("fields") == ["documenttype_experimental"]
+                if doc_type_settings else False
+            )
+
+            # Only apply this filter if experimental
+            if is_experimental:
+                mode = st.session_state.get("anomaly_reporting_mode", "reported")
+                anomaly_cols = [col for col in df.columns if col.startswith("anomaliesclaimed_")]
+                anomaly_sums = df[anomaly_cols].sum(axis=1)
+
+                if mode == "reported":
+                    mask &= (anomaly_sums > 0)
+                elif mode == "none":
+                    mask &= (anomaly_sums == 0)
+
+            # --- Now process all field-specific filters ---
             for group_name, settings in filter_dict.items():
+                # Skip anomaly fields entirely if no anomalies reported is selected
+                if group_name == "Anomaly Types" and mode == "none":
+                    continue  # skip specific anomaly filters
+
                 fields = settings["fields"]
                 logic = settings["logic"]
 
@@ -661,9 +721,6 @@ with col2:
                     if logic == "all of:":
                         mask &= submask.all(axis=1)
                     elif logic == "any of:":
-                        # Avoid fallback to unfiltered if all unchecked
-                        if submask.shape[1] == 0:
-                            return df.iloc[0:0]
                         mask &= submask.any(axis=1)
 
             return df[mask]
