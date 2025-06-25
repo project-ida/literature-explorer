@@ -402,7 +402,81 @@ def should_expand_group(group_name, fields, prefilled_filters):
 
 
 # --- UI ---
-st.title("LENR Literature Explorer")
+#st.title("LENR Literature Explorer")
+
+st.markdown("""
+<style>
+/* Hide the checkbox */
+#popup-toggle {
+  display: none;
+}
+
+/* Style the label like a link */
+.popup-label {
+  font-size: 0.8rem;
+  color: #888;
+  margin-left: 1rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The popup overlay (initially hidden) */
+.popup-overlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.6);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+/* Show when checkbox is checked */
+#popup-toggle:checked ~ .popup-overlay {
+  display: flex;
+}
+
+/* The popup content box */
+.popup-box {
+  background: white;
+  padding: 2rem;
+  border-radius: 10px;
+  max-width: 500px;
+  font-size: 0.9rem;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  position: relative;
+}
+
+/* Close button inside popup */
+.popup-box .close-label {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+</style>
+
+<!-- Hidden checkbox toggle -->
+<input type="checkbox" id="popup-toggle">
+
+<div style='display: flex; justify-content: space-between; align-items: baseline; width: 100%;'>
+  <h1 style='margin-bottom: 0.5rem;'>LENR Literature Explorer</h1>
+  <label for="popup-toggle" class="popup-label" style="margin-bottom: 0.5rem;">Acknowledgments</label>
+</div>
+
+<!-- Popup content (shows when checkbox is checked) -->
+<div class="popup-overlay">
+  <div class="popup-box">
+    <label for="popup-toggle" class="close-label">&times;</label>
+    <h4>Acknowledgments</h4>
+    <p>We would like to thank <strong>Jed Rothwell</strong> of <a href="https://www.lenr-canr.org" target="_blank">lenr-canr.org</a> for collecting a publicly accessible library of LENR papers, which this project draws on.</p>
+    <p>Support from the <strong>Anthropocene Institute</strong> and <strong>ARPA-E</strong> is also gratefully acknowledged.</p>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
 
 col1, col2, col3 = st.columns([2, 3, 4], gap="medium")
 
@@ -573,7 +647,7 @@ with col1:
 
             for i, (group_name, fields) in enumerate(group_items[1:]):
                 #if group_name == "Publisher Category":
-                if group_name in ["Publisher Category", "Hydrogen Isotopes"]:
+                if group_name in ["Publisher Category"]: #, "Hydrogen Isotopes"
                     continue  # already rendered above                
                 
                 if group_name == "Anomaly Types":
@@ -729,9 +803,30 @@ with col2:
 
         matches = apply_filters(checklist_df, selected_filters)
 
+        st.markdown("---")
+
+        #search_string = st.text_input("Filter by string", "")
+
+        search_col1, search_col2 = st.columns([1, 8])
+        with search_col1:
+            st.markdown(
+                f"<div style='text-align: left; padding-top: 0.45rem;'>Filter by</div>",
+                unsafe_allow_html=True
+            )
+        with search_col2:
+            search_string = st.text_input(label="", key="search_string_inline")
+
+        st.markdown("---")   
 
         merged_df = matches.merge(metadata_df, on="Filename", how="left")
         merged_df = merged_df.sort_values(by="Year", ascending=False)
+
+        if search_string.strip():
+            search_string_lower = search_string.strip().lower()
+            merged_df = merged_df[
+                merged_df["Matched Title"].str.lower().str.contains(search_string_lower, na=False) |
+                merged_df["Matched All Authors"].str.lower().str.contains(search_string_lower, na=False)
+            ]
 
         total = metadata_df.shape[0]
         showing = merged_df.shape[0]
@@ -796,6 +891,8 @@ with col2:
 
             # Render in Streamlit
             st.pyplot(fig)
+
+
 
             st.markdown("---")
 
