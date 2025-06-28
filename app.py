@@ -185,6 +185,14 @@ if short_slug:
         st.stop()
 
 
+# Only set the search_string once from URL
+if "search_string" not in st.session_state:
+    query_search = st.query_params.get("search", "")
+    if isinstance(query_search, list):
+        query_search = query_search[0]
+    st.session_state["search_string"] = query_search
+
+
 def slugify_group_name(name):
     return name.replace(" ", "_").lower()
 
@@ -807,6 +815,13 @@ with col2:
 
         #search_string = st.text_input("Filter by string", "")
 
+        query_params = st.query_params
+        default_search = query_params.get("search", "")
+
+        # Ensure it's a string (not None or list)
+        if isinstance(default_search, list):
+            default_search = default_search[0]
+
         search_col1, search_col2 = st.columns([1, 8])
         with search_col1:
             st.markdown(
@@ -814,12 +829,18 @@ with col2:
                 unsafe_allow_html=True
             )
         with search_col2:
-            search_string = st.text_input(label="", key="search_string_inline")
+            search_string = st.text_input("", value=st.session_state["search_string"], key="search_string_inline_col2")
+
 
         st.markdown("---")   
 
         merged_df = matches.merge(metadata_df, on="Filename", how="left")
         merged_df = merged_df.sort_values(by="Year", ascending=False)
+
+        if search_string != st.query_params.get("search", ""):
+            st.query_params.update(search=search_string)
+            st.session_state["search_string"] = search_string
+
 
         if search_string.strip():
             search_string_lower = search_string.strip().lower()
