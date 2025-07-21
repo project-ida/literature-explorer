@@ -142,7 +142,8 @@ PUBLISHER_ORDER = {
     "Magazine/newspaper": 24,    
     "Infinite Energy": 25,    
     "Other category or unknown": 26,
-    "Unknown": 99  # fallback
+    "Unknown": 99,  # fallback,
+    "Science": 27
 }
 
 
